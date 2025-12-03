@@ -3,30 +3,40 @@
     android:orientation="vertical"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="10dp">
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/listMessages"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+    android:background="#FAFAFA"> <androidx.recyclerview.widget.RecyclerView
+    android:id="@+id/listMessages"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:padding="8dp"
+    android:clipToPadding="false"
+    android:scrollbars="vertical" />
 
     <LinearLayout
         android:orientation="horizontal"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:background="#FFFFFF"
+        android:elevation="4dp"
+        android:gravity="center_vertical">
 
         <EditText
             android:id="@+id/txtMessage"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="Escribe un mensaje" />
+            android:hint="Escribe un mensaje"
+            android:padding="12dp"
+            android:background="@android:drawable/edit_text"
+            android:maxLines="4"
+            android:inputType="textCapSentences|textMultiLine" />
 
         <Button
             android:id="@+id/btnSend"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Enviar" />
+            android:text="Enviar"
+            android:layout_marginStart="8dp" />
     </LinearLayout>
 </LinearLayout>

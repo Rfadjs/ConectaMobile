@@ -27,8 +27,11 @@ public class ChatActivity extends AppCompatActivity {
     private String myUid;
     private String peerUid;
 
-    private MqttManager mqttManager;
+    // IDs de las fotos (Por defecto gato 1)
+    private int myPhotoId = 1;
+    private int peerPhotoId = 1;
 
+    private MqttManager mqttManager;
     private ArrayList<Message> messages;
     private MessagesAdapter adapter;
     private DatabaseReference messagesRef;
@@ -40,113 +43,83 @@ public class ChatActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_chat);
 
-        // 1. Obtener datos del Intent y Usuario actual
         myUid = FirebaseAuth.getInstance().getUid();
         peerUid = getIntent().getStringExtra("peerUid");
 
-        // Validación de seguridad para que no se cierre la app
         if (myUid == null || peerUid == null) {
-            Toast.makeText(this, "Error: No se pudo identificar al usuario", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
+            finish(); return;
         }
 
-        // 2. Vincular Vistas
         txtMessage = findViewById(R.id.txtMessage);
         btnSend = findViewById(R.id.btnSend);
         listMessages = findViewById(R.id.listMessages);
-
-        // 3. Configurar RecyclerView
-        messages = new ArrayList<>();
-        adapter = new MessagesAdapter(messages, myUid);
         listMessages.setLayoutManager(new LinearLayoutManager(this));
-        listMessages.setAdapter(adapter);
 
-        // 4. Referencia a Firebase (Historial)
-        // Ruta: messages / MI_ID / ID_DEL_OTRO
-        messagesRef = FirebaseDatabase.getInstance()
-                .getReference("messages")
-                .child(myUid)
-                .child(peerUid);
+        messages = new ArrayList<>();
 
-        // 5. Configurar MQTT
+        messagesRef = FirebaseDatabase.getInstance().getReference("messages").child(myUid).child(peerUid);
+
         mqttManager = new MqttManager();
-        mqttManager.connect(myUid); // Me conecto con MI identidad
+        mqttManager.connect(myUid);
+        mqttManager.subscribeToUser(myUid, (topic, text) -> runOnUiThread(() -> receiveMessage(text)));
 
-        // ESCUCHAR: Me suscribo a MI propio tópico para recibir mensajes
-        mqttManager.subscribeToUser(myUid, (topic, text) -> {
-            runOnUiThread(() -> receiveMessage(text));
-        });
+        // --- PRIMERO CARGAMOS LAS FOTOS, LUEGO EL CHAT ---
+        loadUserPhotosAndInitChat();
 
-        // 6. Cargar historial antiguo
-        loadMessages();
-
-        // 7. Botón Enviar
         btnSend.setOnClickListener(v -> sendMessage());
     }
 
-    /** ============================================
-     * ENVÍO DE MENSAJE (YO -> OTRO)
-     * ============================================ */
+    // Método nuevo para buscar qué gato usa cada uno
+    private void loadUserPhotosAndInitChat() {
+        DatabaseReference usersRef = FirebaseDatabase.getInstance().getReference("users");
+
+        // 1. Buscar MI foto
+        usersRef.child(myUid).child("photoId").get().addOnCompleteListener(task -> {
+            if (task.isSuccessful() && task.getResult().getValue() != null) {
+                try { myPhotoId = Integer.parseInt(task.getResult().getValue().toString()); } catch (Exception e){}
+            }
+
+            // 2. Buscar SU foto
+            usersRef.child(peerUid).child("photoId").get().addOnCompleteListener(task2 -> {
+                if (task2.isSuccessful() && task2.getResult().getValue() != null) {
+                    try { peerPhotoId = Integer.parseInt(task2.getResult().getValue().toString()); } catch (Exception e){}
+                }
+
+                // 3. INICIAR ADAPTADOR CON LAS FOTOS CORRECTAS
+                adapter = new MessagesAdapter(messages, myUid, myPhotoId, peerPhotoId);
+                listMessages.setAdapter(adapter);
+
+                // 4. Cargar mensajes
+                loadMessages();
+            });
+        });
+    }
+
     private void sendMessage() {
         String text = txtMessage.getText().toString().trim();
         if (text.isEmpty()) return;
-
         long timestamp = System.currentTimeMillis();
+        Message msg = new Message(null, myUid, peerUid, text, timestamp);
 
-        Message msg = new Message(
-                null,
-                myUid,    // Sender: YO
-                peerUid,  // Receiver: EL OTRO
-                text,
-                timestamp
-        );
-
-        // A. Guardar en MI historial de Firebase
         String id = messagesRef.push().getKey();
         msg.id = id;
         messagesRef.child(id).setValue(msg);
-
-        // B. Enviar por MQTT al tópico del OTRO (Velocidad)
         mqttManager.sendToUser(peerUid, text);
-
-        // Limpiar caja de texto
         txtMessage.setText("");
     }
 
-    /** ============================================
-     * RECIBIR MENSAJE (EL OTRO -> YO)
-     * ============================================ */
     private void receiveMessage(String msgText) {
         long timestamp = System.currentTimeMillis();
-
-        // Creamos el objeto mensaje invertido (porque lo recibí)
-        Message msg = new Message(
-                null,
-                peerUid,  // Sender: EL OTRO
-                myUid,    // Receiver: YO
-                msgText,
-                timestamp
-        );
-
-        // A. Guardar en MI historial de Firebase
-        // Como messagesRef apunta a "messages/MY_UID/PEER_UID", al guardarlo aquí
-        // se queda en mi historial para siempre.
+        Message msg = new Message(null, peerUid, myUid, msgText, timestamp);
         String id = messagesRef.push().getKey();
         msg.id = id;
         messagesRef.child(id).setValue(msg);
 
-        // B. Actualizar la pantalla (Opcional, porque el listener de abajo ya lo hace,
-        // pero esto lo hace más rápido visualmente)
-        // adapter.add(msg);
-        // listMessages.scrollToPosition(adapter.getItemCount() - 1);
-
-        Log.d(TAG, "Mensaje recibido por MQTT: " + msgText);
+        // Actualizamos la lista visualmente también
+        adapter.add(msg);
+        listMessages.scrollToPosition(adapter.getItemCount() - 1);
     }
 
-    /** ============================================
-     * CARGAR HISTORIAL DE FIREBASE
-     * ============================================ */
     private void loadMessages() {
         messagesRef.orderByChild("timestamp").addValueEventListener(new ValueEventListener() {
             @Override
@@ -157,25 +130,15 @@ public class ChatActivity extends AppCompatActivity {
                     if (msg != null) messages.add(msg);
                 }
                 adapter.notifyDataSetChanged();
-                // Bajar al último mensaje
-                if (messages.size() > 0) {
-                    listMessages.scrollToPosition(messages.size() - 1);
-                }
+                if (messages.size() > 0) listMessages.scrollToPosition(messages.size() - 1);
             }
-
-            @Override
-            public void onCancelled(DatabaseError error) {
-                Log.e(TAG, "Firebase error: " + error.getMessage());
-            }
+            @Override public void onCancelled(DatabaseError error) {}
         });
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Desconectar al salir para ahorrar batería/datos
-        if (mqttManager != null) {
-            mqttManager.disconnect();
-        }
+        if (mqttManager != null) mqttManager.disconnect();
     }
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:orientation="horizontal"
-    android:gravity="end"
+    android:gravity="end|bottom"
     android:padding="8dp"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
@@ -10,8 +10,16 @@
         android:id="@+id/tvMessage"
         android:background="#C9FFD1"
         android:textColor="#000000"
-        android:padding="10dp"
+        android:padding="12dp"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content" />
+        android:layout_height="wrap_content"
+        android:text="Mensaje"
+        android:elevation="2dp"
+        android:layout_marginEnd="8dp"/>
 
+    <ImageView
+        android:id="@+id/imgProfile"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@drawable/img_default_1"/>
 </LinearLayout>
